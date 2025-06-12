@@ -1,0 +1,134 @@
+import requests
+import re
+
+# Dictionary cache for storing retrieved data
+cache = {}
+
+
+def retrieve_currency_rates(code_from: str, code_to: str = None) -> None:
+    your_currency_code = code_from.lower()
+    url = f"https://www.floatrates.com/daily/{your_currency_code}.json"
+
+    try:
+        # Request currency rate from daily web service
+        resp = requests.get(url, timeout=5)  # Set timeout to avoid hanging indefinitely
+        resp.raise_for_status()  # Raise an error for HTTP response codes like 404, 500
+        currency_json = resp.json()
+
+        # # Print available currency keys
+        # print("Available currency keys:", sorted(currency_json.keys()), sep="\n")
+
+        if code_to:
+            try:
+                cache[code_to.lower()] = currency_json.get(code_to.lower(), {}).get("rate", None)
+                if cache[code_to.lower()] is None:
+                    print(f"Error: Currency code '{code_to.upper()}' not found in API response.")
+            except LookupError:
+                print("Error. Currency code not found.")
+                return
+        else:
+            # Store exchange rates for USD and EUR only if they are NOT the base currency
+            if your_currency_code != "usd":
+                cache["usd"] = currency_json.get("usd", {}).get("rate", None)
+                if cache["usd"] is None:
+                    print("Warning: USD exchange rate not found in API response.")
+
+            if your_currency_code != "eur":
+                cache["eur"] = currency_json.get("eur", {}).get("rate", None)
+                if cache["eur"] is None:
+                    print("Warning: EUR exchange rate not found in API response.")
+
+
+    except requests.exceptions.Timeout:
+        print("Error: Request timed out. Please check your internet connection and try again.")
+    except requests.exceptions.ConnectionError:
+        print("Error: Unable to connect to the API. Please check your network.")
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP Error: {http_err}")
+    except requests.exceptions.RequestException as req_err:
+        print(f"Request Error: {req_err}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+
+
+def check_code(code: str) -> bool:
+    return bool(re.fullmatch('^[a-z]{3}$', code))
+
+
+def convert_to_currency(amount: float, rate: float) -> float:
+    return amount * rate
+
+
+def main():
+    # First input, currency to exchange from.
+    try:
+        # print("Exchange from:")
+        currency_code_from: str = input().lower()
+
+        if not check_code(currency_code_from):
+            print("Invalid input. Enter a valid 3-letter currency code (e.g., USD, EUR).")
+            return
+
+        # Retrieve currency exchange rates data
+        retrieve_currency_rates(currency_code_from)
+        # print("Cache:", cache)
+
+        ## Exchange loop
+        # Second input, currency to exchange to.
+        # Third input, amount to exchange.
+        while True:
+            try:
+                # print("Exchange to:")
+                currency_code_to: str = input().strip().lower()
+                if currency_code_to == "":
+                    print("Exiting exchange process.")
+                    break
+                if not check_code(currency_code_to):
+                    print("Invalid input. Enter a valid 3-letter currency code.")
+                    continue
+
+                # print("Amount:")
+                amount_to_exchange = input().strip()
+                if amount_to_exchange == "":
+                    print("Exiting exchange process.")
+                    break
+
+                try:
+                    amount_to_exchange = float(amount_to_exchange)
+                    if amount_to_exchange < 0:
+                        print("Inputs cannot be negative")
+                        continue
+                except ValueError:
+                    print("Invalid input. Please enter a numeric value.")
+                    continue
+
+                # Check if currency is already stored in cache
+                print("Checking the cache...")
+                if currency_code_to in cache:
+                    print("Oh! It is in the cache!")
+                    # print(cache)
+                    rate_to = cache[currency_code_to]
+                else:
+                    print("Sorry, but it is not in the cache!")
+                    retrieve_currency_rates(currency_code_from, currency_code_to)
+                    # print(cache)
+                    if currency_code_to in cache:  # Ensure it's stored after retrieval
+                        rate_to = cache[currency_code_to]
+                    else:
+                        print(f"Error: Unable to retrieve exchange rate for {currency_code_to}.")
+                        continue
+
+                # Calculate and print result
+                result = convert_to_currency(amount_to_exchange, rate_to)
+                print(f"You received {result:.2f} {currency_code_to.upper()}.")
+
+            except KeyboardInterrupt:
+                print("\nProgram interrupted. Exiting...")
+                break
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+
+
+
+if __name__ == '__main__':
+    main()
